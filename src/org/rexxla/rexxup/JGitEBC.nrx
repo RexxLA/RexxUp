@@ -1,0 +1,370 @@
+import org.eclipse.jgit.
+import org.netrexx.address.
+
+/**
+ * Class JGitEBC is a small set of utility functions to ease the work with EBCDIC
+ * encoded files on z/OS Unix. In an ideal world, most will be re-integrated with jGit.
+ * Created on: di, 11, aug 2015 15:58:17 +0200
+ */
+class JGitEBC
+  properties private
+  repository_ = Repository
+  filesMap    = TreeMap()
+
+  /**
+   * Default constructor
+   */
+  method JGitEBC()
+
+  /**
+   * Method init looks for a .git repository and scans up the directory tree
+   * until one is found. If no workspace is found, it ends here
+   * Most methods in this class call init and close for short locks
+   * (also, not all repo operations are guaranteed to be threadsafe)
+   */
+  method init() protect
+    builder = FileRepositoryBuilder()
+    this.repository_ = builder.findGitDir().readEnvironment().build()
+    return
+
+  /**
+   * Method close closes the .git repository for tidyness
+   */
+  method close() protect
+    this.repository_.close()
+
+  /**
+   * Method getSha1 returns an ObjectId for a file
+   * @param fileName represents the file
+   * @return ObjectId containing (among others) the SHA-1 checksum of the file
+   */
+  method getSha1(fileName) returns ObjectId protect
+    init()
+    fileLength = File(fileName).length()
+    say fileLength
+
+    objectInserter_ = this.repository_.newObjectInserter()
+
+    fips = BufferedInputStream(FileInputStream(fileName))
+    blobId = objectInserter_.idFor(Constants.OBJ_BLOB, fileLength, fips)
+    objectInserter_.flush()
+    close()
+    return blobId
+
+  /**
+   * Method addFile 'git adds' a file to the repository that governs the workspace
+   * @param fileName is a Rexx
+   */
+  method addFile(fileName) protect
+    init()
+    git_ = Git(this.repository_)
+    git_.add().addFilepattern(fileName).call()
+    say "Added file" fileName "to repository at" repository_.getDirectory()
+    close()
+
+  /**
+   * Method retrieveFileFromSHA returns a file by its SHA
+   * @param oid is a ObjectId which must be initialized with the SHA
+   * @param fileName represents the output filename
+   */
+  method retrieveFileFromSHA(oid=ObjectId, fileName) protect
+    init()
+    objectReader_ = this.repository_.newObjectReader()
+    objectLoader_ = objectReader_.open(oid)
+
+    fops = BufferedOutputStream(FileOutputStream(fileName))
+    do
+      objectLoader_.copyTo(fops)
+    catch MissingObjectException
+      say 'missing object'
+    catch IOException
+      say 'error in i/o'
+    end
+    fops.close()
+    close()
+
+  /**
+   * Method retrieveFileFromSHA is a convenience overload
+   * that enables the user to specify the hex representation of the SHA
+   * @param sha contains the string representation of the SHA
+   * @param fileName is a Rexx
+   */
+  method retrieveFileFromSHA(sha, fileName) protect
+    oid = ObjectId.fromString(sha)
+    retrieveFileFromSHA(oid,fileName)
+
+  /**
+   * Method insertFile inserts a file into the ObjectStore of this repository
+   * It does not Add, nor Commit it.
+   * @param fileName is a Rexx
+   * @return ObjectId containing the SHA-1 of the file
+   */
+  method insertFile(fileName) returns ObjectId protect
+    init()
+    fileLength = File(fileName).length()
+    say 'File' fileName 'is of length' fileLength
+    objectInserter_ = this.repository_.newObjectInserter()
+
+    fips = BufferedInputStream(FileInputStream(fileName))
+    blobId = objectInserter_.insert(Constants.OBJ_BLOB, fileLength, fips)
+    say 'File' fileName 'has SHA-1 checksum' blobId
+
+    objectInserter_.flush()
+    close()
+    return blobId
+
+  /**
+   * Method cmp compares two binary files
+   * @param sha1 is a ObjectId
+   * @param sha2 is a ObjectId
+   */
+  method cmp(sha1=ObjectId,sha2=ObjectId) protect
+    retrieveFileFromSHA(sha1,'tmpf1')
+    retrieveFileFromSHA(sha2,'tmpf2')
+
+    command    = ArrayList()
+    command.add('cmp')
+    command.add('tmpf1')
+    command.add('tmpf2')
+    os = OSProcess()
+    a  = os.outtrap(command)
+    i  = a.iterator()
+    loop while i.hasNext()
+      line     = Rexx i.next()
+      say line
+    end
+
+  /**
+   * Method cmp is a convenience overload enabling specification of SHA
+   * as strings
+   * @param sha1 is a Rexx
+   * @param sha2 is a Rexx
+   */
+  method cmp(sha1,sha2) protect
+    oid1 = ObjectId.fromString(sha1)
+    oid2 = ObjectId.fromString(sha2)
+    cmp(oid1,oid2)
+
+  /**
+   * Method diff calls the native diff utility to compare two files
+   * which might be EBCDIC encoded and still will be treated as text
+   * @param sha1 is a ObjectId
+   * @param sha2 is a ObjectId
+   */
+  method diff(sha1=ObjectId,sha2=ObjectId) protect
+    retrieveFileFromSHA(sha1,'tmpf1')
+    retrieveFileFromSHA(sha2,'tmpf2')
+
+    command    = ArrayList()
+    command.add('diff')
+    command.add('tmpf1')
+    command.add('tmpf2')
+    os = OSProcess()
+    a  = os.outtrap(command)
+    i  = a.iterator()
+    loop while i.hasNext()
+      line     = Rexx i.next()
+      say line
+      if line.pos('is binary') >0 then cmp(sha1,sha2)
+    end
+
+  /**
+   * Method diff is a convenience overload enabling specification of SHA
+   * as strings
+   * @param sha1 is a Rexx
+   * @param sha2 is a Rexx
+   */
+  method diff(sha1,sha2) protect
+    oid1 = ObjectId.fromString(sha1)
+    oid2 = ObjectId.fromString(sha2)
+    diff(oid1,oid2)
+
+  /**
+   * Method copy shells the cp command to copy a file
+   * one of those might be QSAM, following the z/OS convention
+   * example: copy('//''M06F947.CHARS.TEST''','bla.tst')
+   * Does not use the repository, but enables to add files to the workspace
+   * @param fileNameTo is a Rexx
+   */
+  method copy(fileNameFrom,fileNameTo) protect
+    command    = ArrayList()
+    command.add(String('cp'))
+    command.add(String(fileNameFrom))
+    command.add(String(fileNameTo))
+    os = OSProcess()
+    a  = os.outtrap(command)
+    i  = a.iterator()
+    loop while i.hasNext()
+      line     = Rexx i.next()
+      say line
+    end
+
+
+  /**
+   * Method commit commits the file to the repository
+   * with a commit -a (ALL)
+   * @param message is the commit message used for this commit
+   */
+  method commit(message) returns ObjectId protect
+    init()
+    git_ = Git(this.repository_)
+    rev = git_.commit().setAll(1).setMessage(message).call()
+    close()
+    return rev.getId()
+
+
+  /**
+   * Method treeWalk ...
+   * @param treeId is a ObjectId
+   */
+  method treeWalk(treeId=ObjectId,quiet=0) protect
+    init()
+    count = 0
+    treeWalk_ = TreeWalk(this.repository_)
+    treeWalk_.addTree(treeId)
+    treeWalk_.setRecursive(1)
+    treeWalk_.setPostOrderTraversal(1)
+    loop while treeWalk_.next()
+      fileMode	= Integer.parseInt(treeWalk_.getFileMode(0).toString() )
+      objectId_	= treeWalk_.getObjectId(0).name()
+      path	= treeWalk_.getPathString()
+      count	= count + 1
+      if \quiet then say objectId_ (Rexx fileMode).format(6) path
+      if this.filesMap.get(path) = null then
+	do
+	  this.filesMap.put(path,objectId_)
+	end
+      else
+	do
+	  objids = this.filesMap.get(path)
+	  objids = objids Rexx(objectId_.toString())
+	  this.filesMap.put(path,objids)
+	end
+    end
+    if \quiet then say count "files in commit tree"
+    close()
+
+  /**
+   * Method treeWalk ...
+   * @param shaStr is a Rexx
+   */
+  method treeWalk(shaStr)
+    oid = ObjectId.fromString(shaStr)
+    this.treeWalk(oid)
+
+  /**
+   * Method treeWalk ...
+   * @param r is a RevTree
+   */
+  method treeWalk(r=RevTree)
+    oid = r.toObjectId()
+    this.treeWalk(oid)
+
+  /**
+   * Method commitWalk ...
+   * @param head is a ObjectId
+   * @return TreeMap containing ...
+   */
+  method commitWalk(head=ObjectId,quiet) returns TreeMap protect
+    init()
+    this.filesMap.clear()
+    rev = RevCommit
+    do
+      walk = RevWalk(this.repository_)
+      commit = walk.parseCommit(head)
+      walk.markStart(commit)
+      count = int 0
+      loop forever
+	rev = walk.next()
+	if rev = null then leave
+	say '-'.copies(40)
+	say rev
+	say 'Commit Time   :' Date(long rev.getCommitTime() * 1000)
+	say 'Author ID     :' rev.getAuthorIdent
+	say 'Committer ID  :' rev.getCommitterIdent
+	say 'Commit Message:' rev.getFullMessage()
+
+	say 'tree: (Files in Commit Object)'
+	treeWalk(rev.getTree(),quiet)
+	say
+	count = count + 1
+      end
+      say count "commits in this branch"
+      walk.dispose()
+      close()
+    end
+    return this.filesMap
+
+  /**
+   * Method commitWalk is a convenience method that specifies the ref as a string 
+   * @param head is a Rexx
+   */
+  method commitWalk(head,quiet) returns TreeMap protect
+    oid = ObjectId.fromString(head)
+    return this.CommitWalk(oid,quiet)
+
+  /**
+   * Method getHeadRevisionObjectID ...
+   * @return ObjectId containing ...
+   */
+  method getHeadRevisionObjectID() returns ObjectId
+    init()
+    head = this.repository_.findRef("refs/heads/main")
+    close()
+    return head.getObjectId()
+    
+  /**
+   * Method commitWalkFromHeadRev walks the commit tree from the current head revision
+   */
+  method commitWalkFromHeadRev(quiet=1) returns TreeMap protect
+    return this.commitWalk(this.getHeadRevisionObjectID(),quiet)
+    
+  /**
+   * Method walkTreeForThisCommit ...
+   * @param revStr is a Rexx
+   */
+  method walkTreeForThisCommit(revStr) returns TreeMap
+    init()
+    this.filesMap.clear()
+    oid = ObjectId.fromString(revStr)
+    rev = RevCommit
+    walk = RevWalk(this.repository_)
+    commit = walk.parseCommit(oid)
+    walk.markStart(commit)
+    rev = walk.next()
+    treeWalk(rev.getTree())
+    close()
+    return this.filesMap
+    
+  /**
+   * Method walkHeadAndPreviousCommit ...
+   * @return TreeMap containing ...
+   */
+  method changedFilesInCurrentHEAD() returns TreeMap protect
+    init()                                                                                          
+    rev = RevCommit
+    walk = RevWalk(this.repository_)
+    commit = walk.parseCommit(getHeadRevisionObjectID())
+    walk.markStart(commit)
+    rev = walk.next()
+    treeWalk(rev.getTree(),1)
+    rev = walk.next()
+    treeWalk(rev.getTree(),1)
+    close()
+    return this.filesMap
+
+  /**
+   * Method main can be used for local testing of the functionality in this class
+   * @param args is a String[]
+   */
+  method main(args=String[]) static
+    j = JGitEBC()
+    -- j.init()
+    -- j.diff("533ae124dee459d3ebc0e400eb1a168809bcdc28","bf3f316ceed9e664a5209fe14036740cde71facd")
+    -- commitID = (Rexx j.commit('test commit')).word(2)
+    -- j.copy('//''M06F947.CHARS.TEST''','bla.tst')
+    j.commitWalkFromHeadRev(0)
+    -- j.commitWalk("b1bfed7d9d8e2c9be8b359bd28de57239b823453")
+    -- j.walkTreeForThisCommit("b1bfed7d9d8e2c9be8b359bd28de57239b823453")
+    -- j.walkTreeForThisAndPreviousCommit(commitID)
+    
