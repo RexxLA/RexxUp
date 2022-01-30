@@ -1,0 +1,18 @@
+package org.rexxla.rexxup
+class rxup
+  properties private
+  jv = System.getProperty('java.version') 
+  ar = System.getProperty('os.arch')
+  on = System.getProperty('os.name')
+  ov = System.getProperty('os.version')
+  nr = org.netrexx.process.NrVersion().getVersion()
+  
+  method main(args=String[]) static
+    rxp = rxup()
+    say 'rexxup 0.1' rxp.nr rxp.jv rxp.ar rxp.on rxp.ov
+    
+    -- check if the git repo is there and create it when not
+    
+    -- pull the current state of the formulae corpus
+    
+    
