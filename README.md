@@ -21,5 +21,6 @@ Like other package managers, we can have prebuilt binaries for ISA's, OS, OS ver
 6) It should tell the user what it is doing and ask for permission (of the user) on every step; the permissions can be waived with a switch like -y (like the others do it). An action should be atomic and have rollback, so it works in a temp directory and do an atomic rename/rollback. 
 7) It must always be possible to remove the package manager and start again.
 8) It must always be possible to remove a package and try again, for example if the atomicity failed due to network or other trouble/
-9)We try to be thrifty with other people’s bandwith.
-10) There needs to be some rate limiting built in because of lunatics.
+9) We try to be thrifty with other people’s bandwith.
+10) Most of the infra (git, zip) needs to be built into the tools, to squish OS dependencies
+11) There needs to be some rate limiting built in because of lunatics.
