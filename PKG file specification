@@ -1,0 +1,30 @@
+the PACKAGE file (PKG) consists of
+- comments
+  > starting with * in column 1
+  > blank in column 1
+  
+- empty lines ==> NOP
+
+filename [target file spec]
+  e.g. 
+    test.rex
+      ==> loads test.rex from the repository as test.rex to the client
+    test.rex mytest.rex
+      ==> loads test.rex as mytest.rex to the client
+    test.rex /etc/rexx/test.rex
+      ==> loads test.rex into the directory /etc/rexx
+      
+definitions - starting with #
+e.g.
+  #define valid 1
+    ==> sets variable valid to 1
+  
+#ifdef &var. ... then
+  ==> if variable ... is set then do ...
+  
+#if exp then
+  ==> if expressen evaluates to true then execute...
+  
+  
+//EXEC ...
+  ==> execute statement - i.e. send to command line
