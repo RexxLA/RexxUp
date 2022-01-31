@@ -1,0 +1,205 @@
+import com.ibm.jzos.
+
+/**
+ * class Zip wraps the basics of making a multi-entry zipfile. FileNames or
+ * Files can be added, then create() does the adding of the zip entries and
+ * the copying of the file content to a zipOutputstream. DeleteOriginals
+ * deletes the files on normal exit of the JVM.
+ * @version $Id: Zip.nrx,v 1.5 2004/02/02 16:21:29 JA2511 Exp $
+ * @version $Id: Zip.nrx,v 1.6 2014/12/15 16:21:29 M07G214 JZOS Exp $ §
+ * @version $Id: Zip.nrx,v 1.7 2019/04/02 18:26:30 RVJ ReadZipEntries Exp $ §  
+ */
+class Zip
+
+  properties indirect
+  fileNames    = ArrayList
+  extra	       = ArrayList
+  zipEntries   = ArrayList
+  name	       = Rexx
+
+  properties private
+  os	       = String
+  createcalled = Boolean
+
+  /** default constructor */
+  method Zip()
+    fileNames	      = ArrayList()
+    this.createcalled = Boolean.false
+    this.os	      = System.getProperty('os.name')
+    return this
+
+  /** constructor that takes the filename of the outputzipfile */
+  method Zip(name_)
+    this.fileNames    = ArrayList()
+    this.name	      = name_
+    this.createcalled = Boolean.false
+    this.os	      = System.getProperty('os.name')
+    return this
+
+  /** add a filename as a string */
+  method add(name_=String)
+    this.fileNames.add(Rexx name_)
+    return
+    
+  /** add a filename as a Rexx string */
+  method add(name_)
+    this.fileNames.add(name_)
+    return
+
+  /** add a ddname as a string */
+  method addDD(name_=String)
+    this.fileNames.add(Rexx name_)
+    return
+    
+  /** add a ddname as a Rexx string */
+  method addDD(name_)
+    this.fileNames.add(name_)
+    return
+
+  /** add a file as a Java File type */
+  method add(name_=File)
+    this.fileNames.add(Rexx name_.getName())
+    return
+
+    /**
+     * This deletes the files that were added to the zipfile on exit of the VM.
+     * This is done this way because on some platforms the file system is not
+     * quick enough to keep up with the speed of the JVM and files are
+     * randomly not deleted in some cases. This method schedules for deletion
+     * on a clean exit of the JVM; it is a silent error to call the method
+     * before a create() call
+     */
+  method deleteOriginals()
+    if createcalled = Boolean.false then return
+    i = fileNames.iterator()
+    loop while i.hasNext()
+      f = File(String i.next().toString())
+      f.deleteOnExit()
+    end
+
+    /**
+     * method create() does the actual work of creating the zipfile with
+     * an entry for every file and copying to the zipoutputstream
+     * 2014: 
+     * a version for z/OS is added to be able to directly use DDnames 
+     */
+  method create()
+    len          = int
+    createcalled = Boolean.true
+    if this.os = 'z/OS' then do
+      enc = ZUtil.getDefaultPlatformEncoding()
+      oFile_ = ZFile("//DD:ZIPOUT", "w")
+      -- loop through the inDDnames, max 100 (0-99)
+      loop j=0 to 99
+	iFile_ = ZFile("//DD:INPUT"j, "rt")
+	in     = iFile_.getInputStream()
+	out    = ZipOutputStream(FileOutputStream(this.name))
+	out.putNextEntry(ZipEntry("input"j))
+	buf    = byte[1024]
+	len    = in.read(buf)
+	loop while (len > 0)
+	  out.write(buf,0,len)
+	  len = in.read(buf)
+	end
+      end
+    catch ioex=IOException
+      say ioex.getMessage()
+    end
+    else
+      do
+ 	i	 = this.fileNames.iterator()
+	out	 = ZipOutputStream(FileOutputStream(this.name))
+	loop while i.hasNext()
+	  infile = String(Rexx i.next())
+	  in	 = FileInputStream(infile)
+	  out.putNextEntry(ZipEntry(infile))
+	  buf	 = byte[1024]
+	  len	 = in.read(buf)
+	  loop while (len > 0)
+	    out.write(buf,0,len)
+	    len	 = in.read(buf)
+	  end
+	end
+      catch ioex = IOException
+	say ioex.getMessage()
+      end
+    out.close()
+    return
+    
+  method readZip(zipFile) returns ArrayList --of Rexx
+    do
+      this.zipEntries = ArrayList()
+      zipFileStream   = FileInputStream(zipFile)
+      this.readZipFileStream(zipFileStream)
+      return this.zipEntries
+    catch IOException
+      say "error reading zip file"
+      return null
+    end
+    
+  method readZipFileStream(zipFileStream=InputStream)
+    zipInputStream_ = ZipInputStream(zipFileStream)
+    zipEntry_       = ZipEntry
+    loop forever
+      zipEntry_ = zipInputStream_.getNextEntry()
+      if zipEntry_ = null then leave
+      this.zipEntries.add(Rexx zipEntry_.getName())
+      if \zipEntry_.isDirectory() then if zipEntry_.getName().endsWith(".zip") then do
+        this.readZipFileStream(zipInputStream_) -- recursion
+      end
+    catch e=IOException
+      say "error reading zip file stream" e.toString()
+    end -- loop forever
+
+
+  method extractAllFilesFromZip(archive_)
+    buffer = byte[1024]
+    zis = ZipInputStream(FileInputStream(archive_))
+    zipEntry_ = zis.getNextEntry()
+    loop while zipEntry_ <> null
+      newFile = File(zipEntry_.getName)
+      fos = FileOutputStream(newFile)
+      len = zis.read(buffer)
+      loop while len>0
+        fos.write(buffer, 0, len)
+	len = zis.read(buffer)
+      end
+      fos.close()
+      zipEntry_ = zis.getNextEntry()
+    end
+    zis.closeEntry()
+    zis.close()
+
+  method extractFilesFromZip(archive_,a=ArrayList)
+    buffer = byte[1024]
+    zis = ZipInputStream(FileInputStream(archive_))
+    zipEntry_ = zis.getNextEntry()
+    loop while zipEntry_ <> null
+      if a.contains(Rexx zipEntry_.getName()) then
+	do
+	  nop
+	end
+      else
+	do
+	  zipEntry_ = zis.getNextEntry()
+	  iterate
+	end
+      newFile = File(zipEntry_.getName)
+      fos = FileOutputStream(newFile)
+      len = zis.read(buffer)
+      loop while len>0
+        fos.write(buffer, 0, len)
+	len = zis.read(buffer)
+      end
+      fos.close()
+      zipEntry_ = zis.getNextEntry()
+    end
+    zis.closeEntry()
+    zis.close()
+
+
+  method main(args=String[]) static
+    z = Zip()
+    b = ArrayList()
+    b.add(Rexx 'b.test')
+    z.extractFilesFromZip("test.zip",b)
