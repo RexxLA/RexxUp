@@ -14,42 +14,57 @@
   </taskdef>
 
   <path id="project.class.path">
-    <pathelement location="war/WEB-INF/classes"/>
+    <pathelement location="build/classes"/>
     <pathelement location="${env.CLASSPATH}"/>
-    <fileset dir="war/WEB-INF/lib" includes="**/*.jar"/>
+    <fileset dir="build/lib" includes="**/*.jar"/>
   </path>
 
   <target name="libs" description="Copy libs to WEB-INF/lib">
-    <mkdir dir="war/WEB-INF/lib" />
-    <mkdir dir="war/WEB-INF/classes"/>
+    <mkdir dir="build//lib" />
+    <mkdir dir="build/classes"/>
   </target>
 
   <target name="nrccompile" depends="libs" description="Compile NetRexx source to Java">
-    <nrc srcDir="src" destDir="war/WEB-INF/classes"
+    <nrc srcDir="src" destDir="build/classes"
 	 includes="**" compile="yes"
 	 classpath="${env.CLASSPATH}"/>
-    <copy todir="war/WEB-INF/classes">
+    <copy todir="build/classes">
       <fileset dir="src" excludes="**/*.nrx"/>
     </copy>
   </target>
 
     <target name="javacompile" depends="libs,nrccompile" description="Compile Java source to bytecode">
     <javac srcdir="src" includes="**" encoding="utf-8"
-        destdir="war/WEB-INF/classes">
+        destdir="build/classes">
       <classpath refid="project.class.path"/>
     </javac>
-    <copy todir="war/WEB-INF/classes">
+    <copy todir="build/classes">
       <fileset dir="src" excludes="**/*.java"/>
     </copy>
   </target>
 
-  <target name="war" depends="nrccompile,javacompile" description="Create a war file">
-    <zip destfile="Example.war" basedir="war"/>
+  <!-- <target name="war" depends="nrccompile,javacompile,libs" description="Create a war file"> -->
+  <!--   <copy todir="war/WEB-INF/lib"> -->
+  <!--     <fileset dir="lib"/> -->
+  <!--   </copy> -->
+  <!--   <zip destfile="Example.war" basedir="war"/> -->
+  <!-- </target> -->
+
+
+  <target name="jar" depends="nrccompile,javacompile,libs" description="Create a jar file">
+    <jar destfile="rxup.jar"
+	 basedir="build/classes"
+	 includes="org/rexxla/rexxup/**">
+      <zipgroupfileset dir="lib" includes="**/*.jar" />
+      <manifest>
+	<attribute name="Main-Class" value="org.rexxla.rexxup.rxup"/>
+      </manifest>
+    </jar>
   </target>
   
   <target name="clean"
 	  description="Cleans this project">
-    <delete dir="war"
+    <delete dir="build"
 	    failonerror="false" />
   </target>
 
