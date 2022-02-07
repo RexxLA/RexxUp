@@ -12,3 +12,4 @@ We have an easily (curl, wget, http(s)client) downloadable `rxup` command, which
 
 Like other package managers, we can have prebuilt binaries for ISA's, OS, OS versions, or build from source. For native tools we need to lean on apt, yum and brew/port. For Windows, we need Windows people or declare dependencies that need to be manually installed.
 
+See the project [Wiki](https://github.com/RexxLA/RexxUp/wiki) for design and implementation.
